@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Booth Plan Builder (Template Edition)</title>
+  <style>
+    :root { 
+      --bg: #f1f5f9; 
+      --text: #0f172a; 
+      --primary: #2563eb; 
+      --grid: #e2e8f0;
+    }
+    * { box-sizing: border-box; font-family: 'Pretendard', '-apple-system', sans-serif; user-select: none; }
+    body { background: var(--bg); margin: 0; padding: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+    
+    /* Toolbar */
+    .toolbar {
+      background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+      padding: 15px 25px; border-bottom: 1px solid #cbd5e1;
+      display: flex; gap: 10px; align-items: center; z-index: 1000; position: relative; flex-wrap: wrap;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+    .toolbar h2 { margin: 0; font-size: 20px; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 10px;}
+    .toolbar h2 span { font-size: 13px; font-weight: 600; background: #10b981; color: white; padding: 4px 10px; border-radius: 20px; }
+    
+    .btn { padding: 9px 14px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; transition: all 0.2s; color: white; font-size: 14px;}
+    .btn-add { background: #0f172a; } .btn-add:hover { background: #334155; }
+    .btn-hw { background: #8b5cf6; } .btn-hw:hover { background: #7c3aed; }
+    .btn-capture { background: #3b82f6; } .btn-capture:hover { background: #2563eb; }
+    .btn-export { background: #10b981; } .btn-export:hover { background: #059669; }
+    .btn-public { background: #64748b; } .btn-public:hover { background: #475569; }
+    .btn-reset { background: #ef4444; } .btn-reset:hover { background: #dc2626; }
+
+    /* Viewport & Canvas */
+    .viewport { flex: 1; position: relative; overflow: hidden; cursor: grab; background: #f8fafc; }
+    .viewport:active { cursor: grabbing; }
+    .canvas {
+      position: absolute; transform-origin: 0 0; width: 4000px; height: 3000px; 
+      background-color: #f8fafc;
+      background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 40px 40px;
+      transition: background-color 0.3s;
+    }
+
+    /* Booth Group */
+    .table-group { position: absolute; width: 120px; height: 120px; }
+    
+    /* Selected Group Styling */
+    .table-group.selected .partition::before, .table-group.selected .partition::after {
+      background: #eff6ff; border-color: #3b82f6; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+    }
+    .table-group.selected .group-handle { background: rgba(59, 130, 246, 0.2); border-color: #3b82f6; opacity: 1; color: #3b82f6; }
+    
+    /* Rotation Handle */
+    .rotate-handle {
+      position: absolute; top: -45px; left: 50%; transform: translateX(-50%);
+      width: 26px; height: 26px; background: white; border: 2px solid #3b82f6; border-radius: 50%;
+      cursor: grab; z-index: 100; display: none; box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    .rotate-handle::before {
+      content: ''; position: absolute; top: 24px; left: 50%; width: 2px; height: 19px;
+      background: #3b82f6; transform: translateX(-50%); z-index: -1;
+    }
+    .rotate-handle::after {
+      content: '↻'; display: flex; align-items: center; justify-content: center;
+      color: #3b82f6; font-weight: bold; font-size: 16px; width: 100%; height: 100%;
+    }
+    .table-group.selected .rotate-handle { display: block; }
+    .rotate-handle:active { cursor: grabbing; background: #eff6ff; }
+
+    /* Partitions */
+    .partition { position: absolute; top: 0; left: 0; width: 120px; height: 120px; pointer-events: none; z-index: 15; }
+    .partition::before, .partition::after {
+      content: ''; position: absolute; background: #f1f5f9; border: 1px solid #cbd5e1;
+      width: 6px; height: 160px; top: -20px; left: 57px; border-radius: 3px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      transition: all 0.2s;
+    }
+    .partition::before { transform: rotate(45deg); }
+    .partition::after { transform: rotate(-45deg); }
+
+    /* Group Drag/Select Handle (Center) */
+    .group-handle {
+      position: absolute; top: 40px; left: 40px; width: 40px; height: 40px;
+      border-radius: 50%; background: rgba(15, 23, 42, 0.05); z-index: 70;
+      cursor: grab; display: flex; align-items: center; justify-content: center;
+      transition: 0.2s; opacity: 0; border: 2px dashed rgba(15, 23, 42, 0.3); color: transparent; font-weight: 900;
+    }
+    .table-group:hover .group-handle { opacity: 1; }
+    .group-handle:hover { background: rgba(15, 23, 42, 0.1); transform: scale(1.1); }
+    .group-handle:active { cursor: grabbing; background: rgba(15, 23, 42, 0.2); }
+
+    /* Seats */
+    .seat {
+      position: absolute; width: 56px; height: 56px; transform: rotate(45deg); 
+      border-radius: 4px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 20; transition: all 0.2s;
+      box-shadow: inset 0 0 0 3px rgba(255,255,255,0.3), 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .seat-inner { color: white; font-weight: 900; font-size: 18px; pointer-events: none; }
+    .seat:hover { z-index: 50; box-shadow: 0 8px 15px rgba(0,0,0,0.2); transform: rotate(45deg) scale(1.05); }
+
+    /* Corner Positions */
+    .pos-top    { top: -8px; left: 32px; }
+    .pos-bottom { top: 72px; left: 32px; }
+    .pos-left   { top: 32px; left: -8px; }
+    .pos-right  { top: 32px; left: 72px; }
+
+    /* Labels */
+    .label {
+      position: absolute; background: white; color: #1e293b;
+      padding: 7px 12px; border-radius: 6px; font-weight: 800; 
+      white-space: nowrap; display: flex; align-items: center; gap: 10px;
+      cursor: pointer; pointer-events: auto; z-index: 30; box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      border: 1px solid #e2e8f0; transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .label:hover { box-shadow: 0 6px 16px rgba(0,0,0,0.15); }
+    .booth-no-badge {
+      background: #0f172a; color: white; font-size: 11px; font-weight: 900;
+      padding: 4px 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .label img { width: 28px; height: 18px; border-radius: 3px; object-fit: cover; border: 1px solid #cbd5e1; } 
+    .label-content { display: flex; flex-direction: column; line-height: 1.25; }
+    .label-cname { font-size: 15px; color: #0f172a; }
+    .label-hw { font-size: 12px; color: #3b82f6; font-weight: 700; transition: opacity 0.2s;} 
+
+    /* Label alignments */
+    .label-left   { left: -45px; top: 50%; transform: translate(-100%, -50%); }
+    .label-top    { top: -45px; left: 50%; transform: translate(-50%, -100%); }
+    .label-right  { left: 165px; top: 50%; transform: translate(0, -50%); }
+    .label-bottom { top: 165px; left: 50%; transform: translate(-50%, 0); }
+
+    /* Public Mode / Hide Mode */
+    body.public-mode .group-handle, body.public-mode .rotate-handle { display: none !important; }
+    body.public-mode .seat { background-color: #2563eb !important; box-shadow: none !important; border: 2px solid rgba(255,255,255,0.5);}
+    body.public-mode .canvas { background-image: none; background-color: #ffffff;}
+    body.public-mode .partition::before, body.public-mode .partition::after { background: #f8fafc; }
+    body.hide-hw .label-hw { display: none !important; }
+
+    /* Modals */
+    .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(15, 23, 42, 0.4); display: none; justify-content: center; align-items: center; z-index: 2000; }
+    .modal { background: white; padding: 25px; border-radius: 12px; width: 340px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 12px; }
+    .modal h3 { margin: 0; color: #0f172a; font-size: 18px; display: flex; justify-content: space-between; align-items: center;}
+    .modal label { font-size: 13px; font-weight: 700; color: #64748b; display: flex; flex-direction: column; gap: 5px; }
+    .modal input, .modal select { padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; outline: none; font-weight: 600; color: #1e293b; }
+    .modal input:focus, .modal select:focus { border-color: #3b82f6; }
+    .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+    .modal-btns button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; }
+    .btn-save { background: #2563eb; color: white; }
+    .btn-cancel { background: #f1f5f9; color: #475569; }
+    .btn-delete { background: #ef4444; color: white; padding: 6px 10px; font-size: 12px;}
+    
+    .slider-wrap { display: flex; align-items: center; gap: 10px; }
+    .slider-wrap input { flex: 1; }
+    .slider-wrap span { font-weight: 900; color: #0f172a; min-width: 40px; text-align: right; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+  <div class="toolbar">
+    <h2>🏢 Booth Plan <span>Template Builder</span></h2>
+    
+    <div style="flex: 1;"></div>
+    
+    <button class="btn btn-add" onclick="addNewGroup()">➕ Add Booth</button>
+    <button class="btn btn-hw" id="btn-hw-toggle" onclick="toggleHw()">🖥️ Hide Hardware</button>
+    <button class="btn btn-public" id="btn-public-mode" onclick="togglePublicMode()">🗺️ Public View</button>
+    <button class="btn btn-export" onclick="exportToCSV()">📊 Export CSV</button>
+    <button class="btn btn-capture" onclick="takeScreenshot()">📸 Capture</button>
+    <button class="btn btn-reset" onclick="resetData()">🔄 Reset</button>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <div class="canvas" id="mapCanvas"></div>
+  </div>
+
+  <!-- Edit Info Modal -->
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <h3 id="modalTitle">Edit Booth Info</h3>
+      <label>Company Name <input type="text" id="editCompany" placeholder="Enter company name"></label>
+      <label>Hardware
+        <select id="editHw">
+          <option value="Tablet">Tablet</option>
+          <option value="StandByMe">StandByMe</option>
+        </select>
+      </label>
+      <label>Country
+        <select id="editCountry">
+          <option value="US">🇺🇸 United States (US)</option>
+          <option value="KR">🇰🇷 Korea (KR)</option>
+          <option value="SG">🇸🇬 Singapore (SG)</option>
+          <option value="HK">🇭🇰 Hong Kong (HK)</option>
+          <option value="MY">🇲🇾 Malaysia (MY)</option>
+          <option value="JP">🇯🇵 Japan (JP)</option>
+          <option value="CN">🇨🇳 China (CN)</option>
+          <option value="TW">🇹🇼 Taiwan (TW)</option>
+          <option value="AE">🇦🇪 UAE (AE)</option>
+        </select>
+      </label>
+      <label>Category (Color)
+        <select id="editCategory">
+          <option value="#3b82f6">Global Startup (Blue)</option>
+          <option value="#ef4444">Korean Startup (Red)</option>
+          <option value="#22c55e">BioEconomy (Green)</option>
+          <option value="#f97316">MRANTI (Orange)</option>
+          <option value="#a855f7">Malaysia (Purple)</option>
+          <option value="#cbd5e1">Empty (Gray)</option>
+        </select>
+      </label>
+      <div class="modal-btns">
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-save" onclick="saveModal()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group Settings Modal -->
+  <div class="modal-overlay" id="groupModal">
+    <div class="modal">
+      <h3>Group Settings <button class="btn-delete" onclick="deleteGroup()">🗑️ Delete Group</button></h3>
+      <label>Rotation Angle (°)
+        <div class="slider-wrap">
+          <input type="range" id="groupRotation" min="-180" max="180" value="0" oninput="updateRotLabel(this.value)">
+          <span id="rotLabel">0°</span>
+        </div>
+      </label>
+      <div class="modal-btns">
+        <button class="btn-cancel" onclick="closeGroupModal()">Cancel</button>
+        <button class="btn-save" onclick="saveGroupModal()">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let layouts = [];
+    let seatData = {};
+    
+    let currentEditId = null;
+    let currentEditGroupId = null;
+    let selectedGroupIdx = null;
+    let copiedGroup = null;
+
+    let isPublicMode = false;
+    let isHwVisible = true;
+
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('mapCanvas');
+    let scale = 0.6; 
+    let translateX = 0, translateY = 0;
+    
+    let isPanning = false;
+    let isGroupDragging = false;
+    let dragTargetGroupIndex = null;
+    let dragStartX = 0, dragStartY = 0;
+    let groupStartPosX = 0, groupStartPosY = 0;
+
+    let isRotating = false;
+    let rotatingGroupIndex = null;
+
+    function init() {
+      const savedData = localStorage.getItem('builder_template_seatdata_v1'); 
+      const savedLayouts = localStorage.getItem('builder_template_layouts_v1'); 
+      
+      if (savedData && savedLayouts) {
+        seatData = JSON.parse(savedData);
+        layouts = JSON.parse(savedLayouts);
+      } else {
+        layouts = [{ seats: [1,2,3,4], x: 1940, y: 1440, r: 0 }];
+        [1,2,3,4].forEach(id => seatData[id] = {c:'', cc:'US', col:'#cbd5e1', hw:'Tablet'});
+      }
+      
+      translateX = (viewport.clientWidth - 4000 * scale) / 2;
+      translateY = (viewport.clientHeight - 3000 * scale) / 2;
+      updateTransform();
+      render();
+    }
+
+    function save() {
+      localStorage.setItem('builder_template_seatdata_v1', JSON.stringify(seatData));
+      localStorage.setItem('builder_template_layouts_v1', JSON.stringify(layouts));
+      render();
+    }
+
+    function resetData() {
+      if(confirm('Are you sure you want to delete all booths and reset?')) {
+        localStorage.removeItem('builder_template_seatdata_v1');
+        localStorage.removeItem('builder_template_layouts_v1');
+        selectedGroupIdx = null; copiedGroup = null;
+        init();
+      }
+    }
+
+    function getMaxSeatId() {
+      let max = 0;
+      layouts.forEach(g => g.seats.forEach(s => { if(s > max) max = s; }));
+      return max;
+    }
+    
+    function addNewGroup() {
+      const maxId = getMaxSeatId();
+      const newSeats = [maxId+1, maxId+2, maxId+3, maxId+4];
+      const nx = (viewport.clientWidth / 2 - translateX) / scale - 60;
+      const ny = (viewport.clientHeight / 2 - translateY) / scale - 60;
+
+      layouts.push({ seats: newSeats, x: nx, y: ny, r: 0 });
+      newSeats.forEach(id => { seatData[id] = { c:'', cc:'US', col:'#cbd5e1', hw:'Tablet' }; });
+      selectedGroupIdx = layouts.length - 1;
+      save();
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if(e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'c' || e.key === 'C') {
+          if (selectedGroupIdx !== null && layouts[selectedGroupIdx]) {
+            copiedGroup = JSON.parse(JSON.stringify(layouts[selectedGroupIdx]));
+          }
+        } else if (e.key === 'v' || e.key === 'V') {
+          if (copiedGroup) {
+            e.preventDefault();
+            const maxId = getMaxSeatId();
+            const newSeats = [maxId+1, maxId+2, maxId+3, maxId+4];
+            
+            const newGrp = { seats: newSeats, x: copiedGroup.x + 150, y: copiedGroup.y + 150, r: copiedGroup.r };
+            layouts.push(newGrp);
+            
+            newSeats.forEach(id => { seatData[id] = {c:'', cc:'US', col:'#cbd5e1', hw:'Tablet'}; });
+            
+            selectedGroupIdx = layouts.length - 1;
+            save();
+          }
+        }
+      }
+    });
+
+    canvas.addEventListener('click', (e) => {
+      if(!e.target.closest('.table-group')) {
+        selectedGroupIdx = null;
+        render();
+      }
+    });
+
+    function render() {
+      canvas.innerHTML = '';
+      
+      const pos = ['pos-left', 'pos-top', 'pos-right', 'pos-bottom'];
+      const lpos = ['label-left', 'label-top', 'label-right', 'label-bottom'];
+
+      layouts.forEach((grp, idx) => {
+        const gDiv = document.createElement('div');
+        gDiv.className = 'table-group';
+        if(selectedGroupIdx === idx) gDiv.classList.add('selected');
+        
+        gDiv.style.transform = `translate(${grp.x}px, ${grp.y}px) rotate(${grp.r}deg)`;
+        
+        const partition = document.createElement('div');
+        partition.className = 'partition';
+        gDiv.appendChild(partition);
+
+        // Rotation Handle (Top Circle)
+        const rotHandle = document.createElement('div');
+        rotHandle.className = 'rotate-handle';
+        rotHandle.onmousedown = (e) => {
+          e.stopPropagation();
+          isRotating = true;
+          rotatingGroupIndex = idx;
+        };
+        gDiv.appendChild(rotHandle);
+
+        // Center Drag Handle
+        const handle = document.createElement('div');
+        handle.className = 'group-handle';
+        handle.innerHTML = '✛';
+        
+        handle.onmousedown = (e) => {
+          e.stopPropagation();
+          selectedGroupIdx = idx;
+          dragTargetGroupIndex = idx;
+          isGroupDragging = true;
+          dragStartX = e.clientX; dragStartY = e.clientY;
+          groupStartPosX = grp.x; groupStartPosY = grp.y;
+          render();
+        };
+        handle.ondblclick = (e) => {
+          e.stopPropagation();
+          openGroupModal(idx);
+        };
+        gDiv.appendChild(handle);
+
+        grp.seats.forEach((id, sIdx) => {
+          const data = seatData[id] || {c:'', cc:'US', col:'#cbd5e1', hw:'Tablet'};
+          const sDiv = document.createElement('div');
+          sDiv.className = `seat ${pos[sIdx]}`;
+          sDiv.style.backgroundColor = data.col;
+          
+          sDiv.innerHTML = `<div class="seat-inner" style="transform: rotate(${-(grp.r + 45)}deg)">${id}</div>`;
+          
+          // Single Click: Open edit modal directly
+          sDiv.onclick = (e) => {
+            e.stopPropagation();
+            selectedGroupIdx = idx;
+            render();
+            openModal(id);
+          };
+
+          if(data.c && data.c.trim() !== '') {
+            const lDiv = document.createElement('div');
+            lDiv.className = `label ${lpos[sIdx]}`;
+            
+            if(sIdx===0) { lDiv.style.left = '-60px'; lDiv.style.top = '50%'; lDiv.style.transform = `translate(-100%, -50%) rotate(${-grp.r}deg)`; }
+            else if(sIdx===1) { lDiv.style.top = '-60px'; lDiv.style.left = '50%'; lDiv.style.transform = `translate(-50%, -100%) rotate(${-grp.r}deg)`; }
+            else if(sIdx===2) { lDiv.style.left = '180px'; lDiv.style.top = '50%'; lDiv.style.transform = `translate(0, -50%) rotate(${-grp.r}deg)`; }
+            else { lDiv.style.top = '180px'; lDiv.style.left = '50%'; lDiv.style.transform = `translate(-50%, 0) rotate(${-grp.r}deg)`; }
+            
+            lDiv.innerHTML = `
+              <div class="booth-no-badge">No.${id}</div>
+              <img src="https://flagcdn.com/w40/${data.cc.toLowerCase()}.png" onerror="this.style.display='none'"> 
+              <div class="label-content">
+                <span class="label-cname">${data.c}</span>
+                <span class="label-hw">(${data.hw || 'Tablet'})</span>
+              </div>
+            `;
+            
+            lDiv.onclick = (e) => {
+              e.stopPropagation();
+              selectedGroupIdx = idx;
+              render();
+              openModal(id);
+            };
+
+            gDiv.appendChild(lDiv);
+          }
+          gDiv.appendChild(sDiv);
+        });
+        canvas.appendChild(gDiv);
+      });
+    }
+
+    function updateTransform() { canvas.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`; }
+
+    window.addEventListener('mousedown', (e) => { 
+      if(e.target.closest('.group-handle') || e.target.closest('.rotate-handle') || e.target.closest('.seat') || e.target.closest('.label') || e.target.closest('.modal')) return; 
+      isPanning = true; dragStartX = e.clientX - translateX; dragStartY = e.clientY - translateY; 
+    });
+    
+    window.addEventListener('mouseup', () => { 
+      if(isGroupDragging || isRotating) save();
+      isPanning = false; isGroupDragging = false; isRotating = false; dragTargetGroupIndex = null; rotatingGroupIndex = null;
+    });
+    
+    window.addEventListener('mousemove', (e) => { 
+      if(isRotating && rotatingGroupIndex !== null) {
+        const grp = layouts[rotatingGroupIndex];
+        const cx = grp.x + 60; // Group center X (120/2)
+        const cy = grp.y + 60; // Group center Y
+        
+        const mx = (e.clientX - translateX) / scale;
+        const my = (e.clientY - translateY) / scale;
+        
+        // Calculate angle and apply +90 offset because handle is at the top (-90deg position)
+        let angle = Math.atan2(my - cy, mx - cx) * (180 / Math.PI) + 90;
+        grp.r = Math.round(angle);
+        
+        // Smooth real-time update without full re-render
+        const grpEl = canvas.children[rotatingGroupIndex];
+        if(grpEl) {
+          grpEl.style.transform = `translate(${grp.x}px, ${grp.y}px) rotate(${grp.r}deg)`;
+          
+          const seatInners = grpEl.querySelectorAll('.seat-inner');
+          seatInners.forEach(si => si.style.transform = `rotate(${-(grp.r + 45)}deg)`);
+          
+          const labels = grpEl.querySelectorAll('.label');
+          labels.forEach(l => {
+            if(l.classList.contains('label-left')) l.style.transform = `translate(-100%, -50%) rotate(${-grp.r}deg)`;
+            else if(l.classList.contains('label-top')) l.style.transform = `translate(-50%, -100%) rotate(${-grp.r}deg)`;
+            else if(l.classList.contains('label-right')) l.style.transform = `translate(0, -50%) rotate(${-grp.r}deg)`;
+            else if(l.classList.contains('label-bottom')) l.style.transform = `translate(-50%, 0) rotate(${-grp.r}deg)`;
+          });
+        }
+      } else if(isGroupDragging && dragTargetGroupIndex !== null) {
+        const dx = (e.clientX - dragStartX) / scale; const dy = (e.clientY - dragStartY) / scale;
+        layouts[dragTargetGroupIndex].x = groupStartPosX + dx; layouts[dragTargetGroupIndex].y = groupStartPosY + dy;
+        const grpEl = canvas.children[dragTargetGroupIndex];
+        if(grpEl) grpEl.style.transform = `translate(${layouts[dragTargetGroupIndex].x}px, ${layouts[dragTargetGroupIndex].y}px) rotate(${layouts[dragTargetGroupIndex].r}deg)`;
+      } else if(isPanning) {
+        translateX = e.clientX - dragStartX; translateY = e.clientY - dragStartY; updateTransform(); 
+      }
+    });
+    
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const xs = (e.clientX - translateX) / scale; const ys = (e.clientY - translateY) / scale;
+      scale *= e.deltaY > 0 ? 0.9 : 1.1; scale = Math.min(Math.max(0.15, 3), scale); 
+      translateX = e.clientX - xs * scale; translateY = e.clientY - ys * scale;
+      updateTransform();
+    }, {passive: false});
+
+    // Modal Controls
+    function openModal(id) {
+      currentEditId = id; 
+      const data = seatData[id] || { c:'', cc:'US', col:'#cbd5e1', hw:'Tablet' };
+      document.getElementById('modalTitle').innerText = `Edit Booth No.${id}`;
+      document.getElementById('editCompany').value = data.c || '';
+      document.getElementById('editCountry').value = data.cc || 'US';
+      document.getElementById('editHw').value = data.hw || 'Tablet';
+      document.getElementById('editCategory').value = data.col || '#cbd5e1';
+      document.getElementById('editModal').style.display = 'flex';
+    }
+    function closeModal() { document.getElementById('editModal').style.display = 'none'; }
+    function saveModal() {
+      if(!seatData[currentEditId]) seatData[currentEditId] = {};
+      seatData[currentEditId].c = document.getElementById('editCompany').value;
+      seatData[currentEditId].cc = document.getElementById('editCountry').value;
+      seatData[currentEditId].hw = document.getElementById('editHw').value;
+      seatData[currentEditId].col = document.getElementById('editCategory').value;
+      closeModal(); save();
+    }
+
+    function openGroupModal(idx) {
+      currentEditGroupId = idx;
+      document.getElementById('groupRotation').value = layouts[idx].r;
+      document.getElementById('rotLabel').innerText = layouts[idx].r + '°';
+      document.getElementById('groupModal').style.display = 'flex';
+    }
+    function closeGroupModal() { document.getElementById('groupModal').style.display = 'none'; }
+    function updateRotLabel(val) { document.getElementById('rotLabel').innerText = val + '°'; }
+    function saveGroupModal() { layouts[currentEditGroupId].r = parseInt(document.getElementById('groupRotation').value); closeGroupModal(); save(); }
+    function deleteGroup() {
+      if(confirm('Are you sure you want to completely delete this group?')) {
+        layouts.splice(currentEditGroupId, 1);
+        selectedGroupIdx = null;
+        closeGroupModal(); save();
+      }
+    }
+
+    // UI Toggles
+    function toggleHw() {
+      isHwVisible = !isHwVisible;
+      const btn = document.getElementById('btn-hw-toggle');
+      if(isHwVisible) { document.body.classList.remove('hide-hw'); btn.innerText = "🖥️ Hide Hardware"; btn.style.background = "#8b5cf6"; } 
+      else { document.body.classList.add('hide-hw'); btn.innerText = "🖥️ Show Hardware"; btn.style.background = "#f59e0b"; }
+    }
+    function togglePublicMode() {
+      isPublicMode = !isPublicMode;
+      const btn = document.getElementById('btn-public-mode');
+      if(isPublicMode) { document.body.classList.add('public-mode'); btn.innerText = "🛠️ Admin Mode"; btn.style.background = "#f59e0b"; } 
+      else { document.body.classList.remove('public-mode'); btn.innerText = "🗺️ Public View"; btn.style.background = "#64748b"; }
+    }
+
+    function exportToCSV() {
+      const headers = isHwVisible ? ['Booth No', 'Country Code', 'Company Name', 'Hardware'] : ['Booth No', 'Country Code', 'Company Name'];
+      let csvContent = "\uFEFF" + headers.join(',') + '\n';
+      const maxId = getMaxSeatId();
+      for (let i = 1; i <= maxId; i++) {
+        const data = seatData[i];
+        if (data && data.c && data.c.trim() !== '') {
+          let cNameEscaped = data.c.replace(/"/g, '""'); 
+          let row = [i, data.cc, `"${cNameEscaped}"`];
+          if(isHwVisible) row.push(`"${data.hw || 'Tablet'}"`);
+          csvContent += row.join(',') + '\n';
+        }
+      }
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+      link.download = "BoothPlan_Builder_Export.csv"; link.click();
+    }
+
+    function takeScreenshot() {
+      selectedGroupIdx = null; render();
+      setTimeout(() => {
+        const btn = document.querySelector('.btn-capture'); btn.innerText = "Capturing...";
+        const oldT = canvas.style.transform; canvas.style.transform = 'none'; 
+        html2canvas(canvas, { scale: 1.5, useCORS: true, backgroundColor: isPublicMode ? '#ffffff' : '#f8fafc' }).then(c => {
+          const link = document.createElement('a'); link.download = 'BoothPlan_Template.png';
+          link.href = c.toDataURL('image/png'); link.click();
+          canvas.style.transform = oldT; btn.innerText = "📸 Capture";
+        }).catch(e => { canvas.style.transform = oldT; alert("Failed to capture screen."); btn.innerText = "📸 Capture"; });
+      }, 100);
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
