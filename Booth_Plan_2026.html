@@ -1,0 +1,624 @@
+물론입니다! 앞서 완성했던 **"올해 행사용(2026년 레퍼런스) 최종 플로어 플랜"** 코드를 다시 전달해 드립니다.
+
+이 코드는 70개의 정확한 기업명, 부스 번호, 하드웨어(StandByMe/Tablet) 대시보드, 화면 잘림 방지(3200x2200 여백), 그리고 요청하신 순서대로 출력되는 맞춤형 엑셀 추출 기능이 모두 100% 반영된 **최종 마스터 버전**입니다.
+
+GitHub에 올리실 때는 이 코드를 복사해서 `index.html`로 저장해 두시면 완벽한 레퍼런스 기록으로 남길 수 있습니다!
+
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Global Innovation Zone - 2026 Floor Plan</title>
+  <style>
+    :root { 
+      --bg: #f1f5f9; 
+      --text: #0f172a; 
+      --primary: #2563eb; 
+      --grid: #e2e8f0;
+    }
+    * { box-sizing: border-box; font-family: 'Pretendard', '-apple-system', sans-serif; user-select: none; }
+    body { background: var(--bg); margin: 0; padding: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+    
+    /* 툴바 (상단 메뉴) */
+    .toolbar {
+      background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
+      padding: 15px 25px; border-bottom: 1px solid #cbd5e1;
+      display: flex; gap: 10px; align-items: center; z-index: 1000; position: relative; flex-wrap: wrap;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+    .toolbar h2 { margin: 0; font-size: 20px; font-weight: 800; color: #1e293b; margin-right: auto; display: flex; align-items: center; gap: 10px;}
+    .toolbar h2 span { font-size: 13px; font-weight: 600; background: var(--primary); color: white; padding: 4px 10px; border-radius: 20px; }
+    
+    .btn { padding: 9px 14px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; transition: all 0.2s; color: white; font-size: 14px;}
+    .btn-hw { background: #8b5cf6; } .btn-hw:hover { background: #7c3aed; }
+    .btn-capture { background: #3b82f6; } .btn-capture:hover { background: #2563eb; }
+    .btn-export { background: #10b981; } .btn-export:hover { background: #059669; }
+    .btn-public { background: #64748b; } .btn-public:hover { background: #475569; }
+    .btn-reset { background: #ef4444; } .btn-reset:hover { background: #dc2626; }
+    
+    /* 뷰포트 & 캔버스 (도화지 여백 3200x2200으로 화면 잘림 완벽 방지) */
+    .viewport { flex: 1; position: relative; overflow: hidden; cursor: grab; background: #f8fafc; }
+    .viewport:active { cursor: grabbing; }
+    .canvas {
+      position: absolute; transform-origin: 0 0; 
+      width: 3200px; height: 2200px; 
+      background-color: #f8fafc;
+      background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 40px 40px;
+      transition: background-color 0.3s;
+    }
+
+    /* 4개 부스 그룹 (반시계 10도 회전) */
+    .table-group { 
+      position: absolute; width: 120px; height: 120px; 
+      transform: rotate(-10deg); 
+    }
+    
+    /* 십자가 파티션 */
+    .partition {
+      position: absolute; top: 0; left: 0; width: 120px; height: 120px; pointer-events: none; z-index: 15;
+    }
+    .partition::before, .partition::after {
+      content: ''; position: absolute; background: #f1f5f9; 
+      border: 1px solid #cbd5e1;
+      width: 6px; height: 160px; top: -20px; left: 57px;
+      border-radius: 3px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    .partition::before { transform: rotate(45deg); }
+    .partition::after { transform: rotate(-45deg); }
+
+    /* 전시 바닥면 */
+    .seat {
+      position: absolute; width: 56px; height: 56px;
+      transform: rotate(45deg); 
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 10; transition: all 0.2s;
+      box-shadow: inset 0 0 0 3px rgba(255,255,255,0.3), 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .seat-inner {
+      transform: rotate(-35deg); 
+      color: white; font-weight: 900; font-size: 18px; 
+      pointer-events: none;
+    }
+
+    .seat:hover { transform: rotate(45deg) scale(1.1); z-index: 50; box-shadow: 0 8px 15px rgba(0,0,0,0.2); }
+    .seat.drag-over { border: 2px dashed #10b981 !important; transform: rotate(45deg) scale(1.15); z-index: 60; }
+
+    .pos-top    { top: -8px; left: 32px; }
+    .pos-bottom { top: 72px; left: 32px; }
+    .pos-left   { top: 32px; left: -8px; }
+    .pos-right  { top: 32px; left: 72px; }
+
+    /* 부스 명패 (좌석 번호 뱃지 포함) */
+    .label {
+      position: absolute; background: white; color: #1e293b;
+      padding: 7px 12px; border-radius: 6px; font-weight: 800; 
+      white-space: nowrap; display: flex; align-items: center; gap: 10px;
+      pointer-events: none; z-index: 20; box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      border: 1px solid #e2e8f0;
+    }
+    .booth-no-badge {
+      background: #0f172a; color: white; font-size: 11px; font-weight: 900;
+      padding: 4px 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    
+    .label img { width: 28px; height: 18px; border-radius: 3px; object-fit: cover; border: 1px solid #cbd5e1; } 
+    .label-content { display: flex; flex-direction: column; line-height: 1.25; }
+    .label-cname { font-size: 15px; color: #0f172a; }
+    .label-hw { font-size: 12px; color: #3b82f6; font-weight: 700; transition: opacity 0.2s;} 
+
+    /* 명패 텍스트 수평 보정 (-10도 회전 상쇄) */
+    .label-left   { left: -25px; top: 50%; transform: translate(-100%, -50%) rotate(10deg); }
+    .label-top    { top: -25px; left: 50%; transform: translate(-50%, -100%) rotate(10deg); }
+    .label-right  { left: 145px; top: 50%; transform: translate(0, -50%) rotate(10deg); }
+    .label-bottom { top: 145px; left: 50%; transform: translate(-50%, 0) rotate(10deg); }
+
+    /* 범례 */
+    .legend { 
+      position: absolute; top: 40px; left: 50px; display: flex; flex-direction: column; gap: 10px; 
+      font-weight: bold; font-size: 14px; color:#334155; transition: opacity 0.3s; 
+      background: rgba(255,255,255,0.9); padding: 15px 20px; border-radius: 12px; 
+      box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; z-index: 100;
+    }
+    .legend-title { font-size: 12px; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px; }
+    .legend-item { display: flex; align-items: center; gap: 10px; }
+    .legend-color { width: 14px; height: 14px; border-radius: 3px; }
+
+    /* 우측 하단 대시보드 */
+    .hw-dashboard {
+      position: absolute; bottom: 60px; right: 60px; display: flex; flex-direction: column; gap: 10px;
+      font-weight: bold; font-size: 15px; color:#1e293b; transition: opacity 0.3s; 
+      background: rgba(255,255,255,0.95); padding: 18px 24px; border-radius: 12px; 
+      box-shadow: 0 8px 25px rgba(0,0,0,0.1); border: 2px solid #e2e8f0; z-index: 100;
+    }
+    .hw-dashboard-title { font-size: 13px; color: #64748b; text-transform: uppercase; margin-bottom: 5px; font-weight: 800;}
+    .hw-item { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 4px 0;}
+    .hw-item span:first-child { color: #3b82f6; }
+    .hw-count { background: #f1f5f9; padding: 4px 12px; border-radius: 20px; color: #0f172a; font-size: 16px; border: 1px solid #cbd5e1;}
+    .hw-total { border-top: 2px dashed #cbd5e1; margin-top: 5px; padding-top: 10px; font-weight: 900; color: #ef4444;}
+
+    /* 배포용 플로어 플랜 모드 */
+    body.public-mode .legend { display: none !important; }
+    body.public-mode .seat { background-color: #2563eb !important; box-shadow: none !important; border: 2px solid rgba(255,255,255,0.5);}
+    body.public-mode .canvas { background-image: none; background-color: #ffffff;}
+    body.public-mode .partition::before, body.public-mode .partition::after { background: #f8fafc; }
+
+    /* 하드웨어 숨김 모드 */
+    body.hide-hw .label-hw { display: none !important; }
+    body.hide-hw .hw-dashboard { display: none !important; }
+
+    /* 모달 */
+    .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(15, 23, 42, 0.4); display: none; justify-content: center; align-items: center; z-index: 2000; }
+    .modal { background: white; padding: 25px; border-radius: 12px; width: 340px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 12px; }
+    .modal h3 { margin: 0; color: #0f172a; font-size: 18px; }
+    .modal label { font-size: 13px; font-weight: 700; color: #64748b; display: flex; flex-direction: column; gap: 5px; }
+    .modal input, .modal select { padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; outline: none; font-weight: 600; color: #1e293b; }
+    .modal input:focus, .modal select:focus { border-color: #3b82f6; }
+    .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+    .modal-btns button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; }
+    .btn-save { background: #2563eb; color: white; }
+    .btn-cancel { background: #f1f5f9; color: #475569; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+  <div class="toolbar">
+    <h2>🏢 Innovation Zone <span>2026 Floor Plan</span></h2>
+    <div style="flex: 1;"></div>
+    <button class="btn btn-hw" id="btn-hw-toggle" onclick="toggleHw()">🖥️ 하드웨어 숨김</button>
+    <button class="btn btn-public" id="btn-public-mode" onclick="togglePublicMode()">🗺️ 배포용 도면 (색상/범례 숨김)</button>
+    <button class="btn btn-export" onclick="exportToCSV()">📊 맞춤 정렬 엑셀 추출</button>
+    <button class="btn btn-capture" onclick="takeScreenshot()">📸 플로어 플랜 캡처</button>
+    <button class="btn btn-reset" onclick="resetData()">🔄 초기화</button>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <div class="canvas" id="mapCanvas"></div>
+  </div>
+
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <h3 id="modalTitle">Edit Booth</h3>
+      <label>Company Name
+        <input type="text" id="editCompany" placeholder="Enter company name">
+      </label>
+      <label>Hardware
+        <select id="editHw">
+          <option value="Tablet">Tablet</option>
+          <option value="StandByMe">StandByMe</option>
+        </select>
+      </label>
+      <label>Country
+        <select id="editCountry">
+          <option value="SG">🇸🇬 Singapore (SG)</option>
+          <option value="KR">🇰🇷 Korea (KR)</option>
+          <option value="US">🇺🇸 United States (US)</option>
+          <option value="HK">🇭🇰 Hong Kong (HK)</option>
+          <option value="MY">🇲🇾 Malaysia (MY)</option>
+          <option value="VN">🇻🇳 Vietnam (VN)</option>
+          <option value="KH">🇰🇭 Cambodia (KH)</option>
+          <option value="AU">🇦🇺 Australia (AU)</option>
+          <option value="TW">🇹🇼 Taiwan (TW)</option>
+          <option value="JP">🇯🇵 Japan (JP)</option>
+          <option value="CN">🇨🇳 China (CN)</option>
+          <option value="DE">🇩🇪 Germany (DE)</option>
+          <option value="TH">🇹🇭 Thailand (TH)</option>
+          <option value="AE">🇦🇪 UAE (AE)</option>
+        </select>
+      </label>
+      <label>Category (Color)
+        <select id="editCategory">
+          <option value="#3b82f6">Global Startup</option>
+          <option value="#ef4444">Korean Startup</option>
+          <option value="#22c55e">BioEconomy</option>
+          <option value="#f97316">MRANTI</option>
+          <option value="#a855f7">Malaysia</option>
+          <option value="#0ea5e9">Cambodia</option>
+        </select>
+      </label>
+      <div class="modal-btns">
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-save" onclick="saveModal()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 캔버스 크기를 넓히고 부스들을 전부 우측(+300) / 아래(+200)로 이동시켜 왼쪽 잘림 완벽 해결된 레이아웃
+    const layouts = [
+      { seats: [77,78,79,80], x: 1250, y: 350 },
+      { seats: [81,82,83,84], x: 1750, y: 350 },
+      { seats: [57,58,59,60], x: 500,  y: 650 },
+      { seats: [61,62,63,64], x: 1000, y: 650 },
+      { seats: [65,66,67,68], x: 1500, y: 650 },
+      { seats: [69,70,71,72], x: 2000, y: 650 },
+      { seats: [73,74,75,76], x: 2500, y: 650 },
+      { seats: [37,38,39,40], x: 500,  y: 950 },
+      { seats: [41,42,43,44], x: 1000, y: 950 },
+      { seats: [45,46,47,48], x: 1500, y: 950 },
+      { seats: [49,50,51,52], x: 2000, y: 950 },
+      { seats: [53,54,55,56], x: 2500, y: 950 },
+      { seats: [17,18,19,20], x: 500,  y: 1250 },
+      { seats: [21,22,23,24], x: 1000, y: 1250 },
+      { seats: [25,26,27,28], x: 1500, y: 1250 },
+      { seats: [29,30,31,32], x: 2000, y: 1250 },
+      { seats: [33,34,35,36], x: 2500, y: 1250 },
+      { seats: [1,2,3,4],     x: 1000, y: 1550 },
+      { seats: [5,6,7,8],     x: 1500, y: 1550 },
+      { seats: [9,10,11,12],  x: 2000, y: 1550 },
+      { seats: [13,14,15,16], x: 2500, y: 1550 }
+    ];
+
+    const categories = [
+      { name: 'Global Startup', color: '#3b82f6' }, { name: 'Korean Startup', color: '#ef4444' },
+      { name: 'BioEconomy', color: '#22c55e' }, { name: 'MRANTI', color: '#f97316' },
+      { name: 'Malaysia', color: '#a855f7' }, { name: 'Cambodia', color: '#0ea5e9' }
+    ];
+
+    const masterData = {
+      1:{c:'Autify',cc:'JP',col:'#3b82f6',hw:'Tablet'},
+      2:{c:'VSL',cc:'SG',col:'#3b82f6',hw:'StandByMe'},
+      3:{c:'Aware Technology',cc:'US',col:'#3b82f6',hw:'StandByMe'},
+      4:{c:'Airwallex',cc:'AU',col:'#3b82f6',hw:'StandByMe'},
+      5:{c:'Pivota',cc:'CN',col:'#3b82f6',hw:'StandByMe'},
+      6:{c:'HOURS Technology',cc:'CN',col:'#3b82f6',hw:'StandByMe'},
+      7:{c:'VOLTAVATE',cc:'AU',col:'#3b82f6',hw:'Tablet'},
+      8:{c:'Seoul Robotics',cc:'KR',col:'#ef4444',hw:'StandByMe'},
+      9:{c:'smart breed',cc:'JP',col:'#3b82f6',hw:'StandByMe'},
+      10:{c:'HairCoSys',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      11:{c:'Call Me Sensei',cc:'SG',col:'#3b82f6',hw:'StandByMe'},
+      12:{c:'InstaAgent Company Limited',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      13:{c:'NanoFrontier',cc:'JP',col:'#3b82f6',hw:'StandByMe'},
+      14:{c:'Detail Earth',cc:'AU',col:'#3b82f6',hw:'Tablet'},
+      15:{c:'Alternō',cc:'VN',col:'#3b82f6',hw:'Tablet'},
+      16:{c:'BetterData',cc:'SG',col:'#3b82f6',hw:'StandByMe'},
+      17:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      18:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      19:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      20:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      21:{c:'Zunya',cc:'SG',col:'#3b82f6',hw:'StandByMe'},
+      22:{c:'YITI TECH Co., Ltd.',cc:'TW',col:'#3b82f6',hw:'StandByMe'},
+      23:{c:'BRALCO ADVANCED MATERIALS PTE. LTD.',cc:'SG',col:'#3b82f6',hw:'Tablet'},
+      24:{c:'meed',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      25:{c:'AlgoTech',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      26:{c:'Mind Lab',cc:'HK',col:'#3b82f6',hw:'Tablet'},
+      27:{c:'HSITP',cc:'HK',col:'#3b82f6',hw:'Tablet'},
+      28:{c:'WeGen',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      29:{c:'Turning Point MEA',cc:'AE',col:'#3b82f6',hw:'Tablet'},
+      30:{c:'HelloWorld Robotics',cc:'MY',col:'#f97316',hw:'Tablet'},
+      31:{c:'Global Testbed & Sandbox Alliance (GTSA)',cc:'MY',col:'#f97316',hw:'Tablet'},
+      32:{c:'identi.ly',cc:'SG',col:'#3b82f6',hw:'StandByMe'},
+      33:{c:'GreenSHeart',cc:'MY',col:'#f97316',hw:'Tablet'},
+      34:{c:'Tan Lan Agri Venture',cc:'MY',col:'#f97316',hw:'Tablet'},
+      35:{c:'Plug and Play',cc:'US',col:'#3b82f6',hw:'Tablet'},
+      36:{c:'Innocorn Technology Limited',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      37:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      38:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      39:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      40:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      41:{c:'Findy Inc.',cc:'JP',col:'#3b82f6',hw:'Tablet'},
+      42:{c:'The Robot Company',cc:'US',col:'#3b82f6',hw:'StandByMe'},
+      43:{c:'GrinBean Hong Kong Limited',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      44:{c:'Locolla Limited',cc:'HK',col:'#3b82f6',hw:'Tablet'},
+      45:{c:'Wineworld Xplorer Limited',cc:'HK',col:'#3b82f6',hw:'Tablet'},
+      46:{c:'oneCHARGE Solutions',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      47:{c:'Alpha Reality',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      48:{c:'SENGINE AI TECH',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      49:{c:'FOOTBOT',cc:'TH',col:'#3b82f6',hw:'StandByMe'},
+      50:{c:'Turing Drive Inc.',cc:'TW',col:'#3b82f6',hw:'Tablet'},
+      51:{c:'Malaysia Digital Economy Corporation',cc:'MY',col:'#a855f7',hw:'Tablet'},
+      52:{c:'VentureTECH',cc:'MY',col:'#a855f7',hw:'Tablet'},
+      53:{c:'MAIA - Medical Augmented Intelligence Automation',cc:'MY',col:'#f97316',hw:'Tablet'},
+      54:{c:'Bioeconomy Corporation',cc:'MY',col:'#22c55e',hw:'Tablet'},
+      55:{c:'Plug and Play APAC',cc:'SG',col:'#3b82f6',hw:'Tablet'},
+      56:{c:'Cell Biopeutics Resources Sdn. Bhd.',cc:'MY',col:'#f97316',hw:'Tablet'},
+      57:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      58:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      59:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      60:{c:'Korean Startup',cc:'KR',col:'#ef4444',hw:'Tablet'},
+      61:{c:'Cellshine',cc:'KR',col:'#ef4444',hw:'StandByMe'},
+      62:{c:'Resaro',cc:'SG',col:'#3b82f6',hw:'StandByMe'},
+      63:{c:'RailMind Technology Limited',cc:'DE',col:'#3b82f6',hw:'Tablet'},
+      64:{c:'Optiqb AI Technology Limited',cc:'TW',col:'#3b82f6',hw:'StandByMe'},
+      65:{c:'Braillic',cc:'HK',col:'#3b82f6',hw:'StandByMe'},
+      66:{c:'fileAI',cc:'SG',col:'#3b82f6',hw:'StandByMe'},
+      67:{c:'Cyberport',cc:'HK',col:'#3b82f6',hw:'Tablet'},
+      68:{c:'Lango Innovation Limited',cc:'HK',col:'#3b82f6',hw:'Tablet'},
+      69:{c:'HongKe Technology Co., Ltd.',cc:'CN',col:'#3b82f6',hw:'Tablet'},
+      70:{c:'Wuxi Baiwanbian Technology Co., Ltd.',cc:'CN',col:'#3b82f6',hw:'Tablet'},
+      71:{c:'MPTC',cc:'KH',col:'#0ea5e9',hw:'Tablet'},
+      72:{c:'FinLuy',cc:'KH',col:'#0ea5e9',hw:'Tablet'},
+      73:{c:'Hanan Medicare',cc:'MY',col:'#22c55e',hw:'Tablet'},
+      74:{c:'Recove Group',cc:'MY',col:'#22c55e',hw:'Tablet'},
+      75:{c:'Gaia Plas',cc:'MY',col:'#22c55e',hw:'Tablet'},
+      76:{c:'Kirana Semikonduktor Sdn. Bhd',cc:'MY',col:'#22c55e',hw:'Tablet'},
+      77:{c:'PIKA',cc:'HK',col:'#3b82f6',hw:'Tablet'},
+      78:{c:'enfarm Agritech',cc:'VN',col:'#3b82f6',hw:'Tablet'},
+      79:{c:'2MR',cc:'SG',col:'#3b82f6',hw:'Tablet'},
+      80:{c:'Preferrd',cc:'HK',col:'#3b82f6',hw:'Tablet'},
+      81:{c:'InsightGenie',cc:'SG',col:'#3b82f6',hw:'Tablet'},
+      82:{c:'FUNTEK',cc:'TW',col:'#3b82f6',hw:'Tablet'},
+      83:{c:'Novelte Robotics',cc:'HK',col:'#3b82f6',hw:'Tablet'},
+      84:{c:'MotoNerv AI',cc:'HK',col:'#3b82f6',hw:'StandByMe'}
+    };
+
+    let seatData = {};
+    let currentEditId = null;
+    let isPublicMode = false;
+    let isHwVisible = true;
+
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('mapCanvas');
+    let scale = 0.55; 
+    let isPanning = false;
+    let startX = 0, startY = 0;
+    let translateX = 0, translateY = 0;
+
+    function init() {
+      const saved = localStorage.getItem('expo_seatmap_reference_2026'); 
+      if (saved) { seatData = JSON.parse(saved); }
+      else { seatData = JSON.parse(JSON.stringify(masterData)); }
+      
+      translateX = (viewport.clientWidth - 3200 * scale) / 2;
+      translateY = (viewport.clientHeight - 2200 * scale) / 2;
+      updateTransform();
+      render();
+    }
+
+    function save() {
+      localStorage.setItem('expo_seatmap_reference_2026', JSON.stringify(seatData));
+      render();
+    }
+
+    function resetData() {
+      if(confirm('초기화하시겠습니까? (최신 데이터 기준으로 복구)')) {
+        localStorage.removeItem('expo_seatmap_reference_2026');
+        seatData = JSON.parse(JSON.stringify(masterData));
+        render();
+      }
+    }
+
+    function toggleHw() {
+      isHwVisible = !isHwVisible;
+      const btn = document.getElementById('btn-hw-toggle');
+      if(isHwVisible) {
+        document.body.classList.remove('hide-hw');
+        btn.innerText = "🖥️ 하드웨어 숨김";
+        btn.style.background = "#8b5cf6";
+      } else {
+        document.body.classList.add('hide-hw');
+        btn.innerText = "🖥️ 하드웨어 보이기";
+        btn.style.background = "#f59e0b"; 
+      }
+    }
+
+    function togglePublicMode() {
+      isPublicMode = !isPublicMode;
+      const btn = document.getElementById('btn-public-mode');
+      if(isPublicMode) {
+        document.body.classList.add('public-mode');
+        btn.innerText = "🛠️ 관리자 모드 복귀 (색상 켬)";
+        btn.style.background = "#f59e0b";
+      } else {
+        document.body.classList.remove('public-mode');
+        btn.innerText = "🗺️ 배포용 도면 (색상/범례 숨김)";
+        btn.style.background = "#64748b";
+      }
+    }
+
+    // 📊 엑셀 커스텀 정렬 내보내기
+    function exportToCSV() {
+      const headers = isHwVisible 
+        ? ['Booth No', 'Country Code', 'Company Name', 'Hardware']
+        : ['Booth No', 'Country Code', 'Company Name'];
+        
+      let csvContent = "\uFEFF" + headers.join(',') + '\n';
+      
+      const customOrder = [
+        "MPTC", "HSITP", "Bioeconomy Corporation", "Global Testbed & Sandbox Alliance (GTSA)", "Malaysia Digital Economy Corporation", "VentureTECH", "Cyberport", "Airwallex", "Turning Point MEA", "Plug and Play APAC", "Plug and Play", "2MR", "AlgoTech", "Alpha Reality", "Alternō", "Autify", "Aware Technology", "BetterData", "Braillic", "BRALCO ADVANCED MATERIALS PTE. LTD.", "Call Me Sensei", "Detail Earth", "Findy Inc.", "FinLuy", "FOOTBOT", "FUNTEK", "GrinBean Hong Kong Limited", "HairCoSys", "HongKe Technology Co., Ltd.", "HOURS Technology", "identi.ly", "Innocorn Technology Limited", "InsightGenie", "Lango Innovation Limited", "Locolla Limited", "meed", "Mind Lab", "MotoNerv AI", "NanoFrontier", "Novelte Robotics", "oneCHARGE Solutions", "Optiqb AI Technology Limited", "PIKA", "Pivota", "Preferrd", "RailMind Technology Limited", "Resaro", "SENGINE AI TECH", "The Robot Company", "Turing Drive Inc.", "VOLTAVATE", "VSL", "WeGen", "Wineworld Xplorer Limited", "Zunya", "YITI TECH Co., Ltd.", "fileAI", "enfarm Agritech", "smart breed", "InstaAgent Company Limited", "Wuxi Baiwanbian Technology Co., Ltd.", "Hanan Medicare", "Recove Group", "Gaia Plas", "Kirana Semikonduktor Sdn. Bhd", "MAIA - Medical Augmented Intelligence Automation", "Tan Lan Agri Venture", "HelloWorld Robotics", "Cell Biopeutics Resources Sdn. Bhd.", "GreenSHeart"
+      ];
+
+      let exportRows = [];
+      let exportedIds = new Set();
+
+      customOrder.forEach(target => {
+        const cleanTarget = target.replace(/[\u200B-\u200D\uFEFF\u2060]/g, '').trim().toLowerCase();
+        for (let i = 1; i <= 84; i++) {
+          const data = seatData[i];
+          if (data && data.c && !exportedIds.has(i)) {
+            const cleanName = data.c.replace(/[\u200B-\u200D\uFEFF\u2060]/g, '').trim().toLowerCase();
+            if (cleanName === cleanTarget || cleanName.includes(cleanTarget)) {
+              exportRows.push({ id: i, data: data });
+              exportedIds.add(i);
+              break;
+            }
+          }
+        }
+      });
+
+      for (let i = 1; i <= 84; i++) {
+        if (!exportedIds.has(i) && seatData[i] && seatData[i].c) {
+          exportRows.push({ id: i, data: seatData[i] });
+        }
+      }
+
+      exportRows.forEach(item => {
+        let cNameEscaped = item.data.c ? item.data.c.replace(/"/g, '""') : ''; 
+        let row = [item.id, item.data.cc, `"${cNameEscaped}"`];
+        if(isHwVisible) row.push(`"${item.data.hw || 'Tablet'}"`);
+        csvContent += row.join(',') + '\n';
+      });
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "FloorPlan_Custom_Order.csv";
+      link.click();
+    }
+
+    function countHardware() {
+      let tabletCount = 0;
+      let standbyCount = 0;
+      for (let i = 1; i <= 84; i++) {
+        if(seatData[i] && seatData[i].c) { 
+          const hw = seatData[i].hw || 'Tablet';
+          if(hw === 'Tablet') tabletCount++;
+          else if(hw === 'StandByMe') standbyCount++;
+        }
+      }
+      return { tablet: tabletCount, standby: standbyCount };
+    }
+
+    function render() {
+      canvas.innerHTML = '';
+      
+      const legend = document.createElement('div');
+      legend.className = 'legend';
+      legend.innerHTML = '<div class="legend-title">Categories</div>';
+      categories.forEach(cat => {
+        legend.innerHTML += `<div class="legend-item"><div class="legend-color" style="background:${cat.color}"></div>${cat.name}</div>`;
+      });
+      canvas.appendChild(legend);
+
+      const hwCounts = countHardware();
+      const dashboard = document.createElement('div');
+      dashboard.className = 'hw-dashboard';
+      dashboard.innerHTML = `
+        <div class="hw-dashboard-title">Hardware Status</div>
+        <div class="hw-item"><span>StandByMe</span><div class="hw-count">${hwCounts.standby}</div></div>
+        <div class="hw-item"><span>Tablet</span><div class="hw-count">${hwCounts.tablet}</div></div>
+        <div class="hw-item hw-total"><span>Total Devices</span><div class="hw-count">${hwCounts.standby + hwCounts.tablet}</div></div>
+      `;
+      canvas.appendChild(dashboard);
+
+      const pos = ['pos-left', 'pos-top', 'pos-right', 'pos-bottom'];
+      const lpos = ['label-left', 'label-top', 'label-right', 'label-bottom'];
+
+      layouts.forEach(grp => {
+        const gDiv = document.createElement('div');
+        gDiv.className = 'table-group';
+        gDiv.style.left = grp.x + 'px'; gDiv.style.top = grp.y + 'px';
+        
+        const partition = document.createElement('div');
+        partition.className = 'partition';
+        gDiv.appendChild(partition);
+
+        grp.seats.forEach((id, idx) => {
+          const data = seatData[id];
+          const sDiv = document.createElement('div');
+          sDiv.className = `seat ${pos[idx]}`;
+          sDiv.style.backgroundColor = data.col;
+          
+          sDiv.innerHTML = `<div class="seat-inner">${id}</div>`;
+          
+          sDiv.setAttribute('draggable', 'true');
+          sDiv.addEventListener('mousedown', (e) => e.stopPropagation()); 
+          
+          sDiv.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', id); e.stopPropagation(); });
+          sDiv.addEventListener('dragover', (e) => { e.preventDefault(); sDiv.classList.add('drag-over'); });
+          sDiv.addEventListener('dragleave', (e) => { sDiv.classList.remove('drag-over'); });
+          sDiv.addEventListener('drop', (e) => {
+            e.preventDefault();
+            sDiv.classList.remove('drag-over');
+            const draggedId = e.dataTransfer.getData('text/plain');
+            if(draggedId && draggedId != id) {
+              const temp = seatData[draggedId];
+              seatData[draggedId] = seatData[id];
+              seatData[id] = temp;
+              save();
+            }
+          });
+
+          // 부스 단일 클릭으로 팝업 호출
+          sDiv.onclick = () => openModal(id);
+
+          if(data.c) {
+            const lDiv = document.createElement('div');
+            lDiv.className = `label ${lpos[idx]}`;
+            
+            lDiv.innerHTML = `
+              <div class="booth-no-badge">No.${id}</div>
+              <img src="https://flagcdn.com/w40/${data.cc.toLowerCase()}.png" onerror="this.style.display='none'"> 
+              <div class="label-content">
+                <span class="label-cname">${data.c}</span>
+                <span class="label-hw">(${data.hw || 'Tablet'})</span>
+              </div>
+            `;
+            gDiv.appendChild(lDiv);
+          }
+          gDiv.appendChild(sDiv);
+        });
+        canvas.appendChild(gDiv);
+      });
+    }
+
+    function updateTransform() {
+      canvas.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+    }
+
+    viewport.addEventListener('mousedown', (e) => { isPanning = true; startX = e.clientX - translateX; startY = e.clientY - translateY; });
+    window.addEventListener('mouseup', () => { isPanning = false; });
+    window.addEventListener('mousemove', (e) => { if(!isPanning) return; translateX = e.clientX - startX; translateY = e.clientY - startY; updateTransform(); });
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const xs = (e.clientX - translateX) / scale;
+      const ys = (e.clientY - translateY) / scale;
+      scale *= e.deltaY > 0 ? 0.9 : 1.1; 
+      scale = Math.min(Math.max(0.2, 3), scale); 
+      translateX = e.clientX - xs * scale;
+      translateY = e.clientY - ys * scale;
+      updateTransform();
+    }, {passive: false});
+
+    function openModal(id) {
+      currentEditId = id;
+      const data = seatData[id];
+      document.getElementById('modalTitle').innerText = `Edit Booth No.${id}`;
+      document.getElementById('editCompany').value = data.c;
+      document.getElementById('editCountry').value = data.cc;
+      document.getElementById('editHw').value = data.hw || 'Tablet';
+      document.getElementById('editCategory').value = data.col;
+      document.getElementById('editModal').style.display = 'flex';
+    }
+    function closeModal() { document.getElementById('editModal').style.display = 'none'; }
+    function saveModal() {
+      seatData[currentEditId].c = document.getElementById('editCompany').value;
+      seatData[currentEditId].cc = document.getElementById('editCountry').value;
+      seatData[currentEditId].hw = document.getElementById('editHw').value;
+      seatData[currentEditId].col = document.getElementById('editCategory').value;
+      closeModal(); save();
+    }
+
+    function takeScreenshot() {
+      const btn = document.querySelector('.btn-capture');
+      btn.innerText = "Capturing...";
+      const oldT = canvas.style.transform;
+      canvas.style.transform = 'none'; 
+      
+      html2canvas(canvas, { scale: 1.5, useCORS: true, backgroundColor: isPublicMode ? '#ffffff' : '#f8fafc' }).then(c => {
+        const link = document.createElement('a');
+        let filename = isPublicMode ? 'FloorPlan_Public_2026' : 'FloorPlan_Admin_2026';
+        if(!isHwVisible) filename += '_No_HW';
+        link.download = filename + '.png';
+        
+        link.href = c.toDataURL('image/png');
+        link.click();
+        
+        canvas.style.transform = oldT;
+        btn.innerText = "📸 플로어 플랜 캡처";
+      }).catch(e => {
+        canvas.style.transform = oldT;
+        alert("Failed to capture screen.");
+        btn.innerText = "📸 플로어 플랜 캡처";
+      });
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
+
+```
